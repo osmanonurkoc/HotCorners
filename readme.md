@@ -15,6 +15,10 @@ A lightweight, native C# application that brings the productivity of macOS/Linux
 
 This tool runs quietly in the system tray and monitors your mouse cursor position. When the cursor hits a screen corner, it executes a pre-configured action. It features a custom-built, modern UI that automatically adapts to your Windows System Theme (Dark/Light Mode).
 
+## 📸 Screenshots
+
+![Application Interface](images/screenshot1.png) ![Application Interface](images/screenshot2.png)
+
 ## ✨ Key Features
 
 * **🎨 Theme-Aware UI:** The settings window automatically detects and switches between Dark and Light modes based on your Windows personalization settings.
