@@ -67,7 +67,7 @@ Configuration is stored in `%LocalAppData%\HotCornersApp\config.json`.
 
 -   `None`
     
--   `Trigger VirtualSpace Grid` (Ctrl+Shift+Tab)
+-   `Trigger VirtualSpace Grid` (Ctrl+Shift+Tab) [Download VirtualSpace](https://github.com/newlooper/VirtualSpace)
     
 -   `Native Task View` (Win+Tab)
     
