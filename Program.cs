@@ -669,6 +669,8 @@ public class MainForm : Form
     private void CheckCorners(object? sender, EventArgs e)
     {
         if ((DateTime.Now - _lastTriggerTime).TotalMilliseconds < (_numCooldown?.Value ?? 500)) return;
+        if (GetAsyncKeyState(0x01) < 0 || GetAsyncKeyState(0x02) < 0)
+            return;
         Point cursor = Cursor.Position;
         Rectangle screen = Screen.PrimaryScreen!.Bounds;
         int s = _numSensitivity?.Value ?? 10;
@@ -711,6 +713,7 @@ public class MainForm : Form
 
     [DllImport("user32.dll")] static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
     [DllImport("user32.dll")] public static extern bool LockWorkStation();
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
 
     private void LoadConfig()
     {
