@@ -116,7 +116,6 @@ public static class Gfx
 }
 
 // --- CUSTOM CONTROLS ---
-
 // 1. MODERN NUMERIC UPDOWN
 public class ModernNumericUpDown : Control
 {
@@ -669,8 +668,11 @@ public class MainForm : Form
     private void CheckCorners(object? sender, EventArgs e)
     {
         if ((DateTime.Now - _lastTriggerTime).TotalMilliseconds < (_numCooldown?.Value ?? 500)) return;
-        if (GetAsyncKeyState(0x01) < 0 || GetAsyncKeyState(0x02) < 0)
-            return;
+        if (GetAsyncKeyState(0x01) < 0 || GetAsyncKeyState(0x02) < 0) return;
+
+        // Check for full-screen applications or games
+        if (IsForegroundWindowFullScreen()) return;
+
         Point cursor = Cursor.Position;
         Rectangle screen = Screen.PrimaryScreen!.Bounds;
         int s = _numSensitivity?.Value ?? 10;
@@ -684,7 +686,8 @@ public class MainForm : Form
         {
             if (!_isTriggered)
             {
-                _isTriggered = true; _lastTriggerTime = DateTime.Now;
+                _isTriggered = true;
+                _lastTriggerTime = DateTime.Now;
                 if (tl) ExecuteAction(_cbTopLeft?.SelectedIndex ?? 0);
                 else if (tr) ExecuteAction(_cbTopRight?.SelectedIndex ?? 0);
                 else if (bl) ExecuteAction(_cbBottomLeft?.SelectedIndex ?? 0);
@@ -693,6 +696,31 @@ public class MainForm : Form
         }
         else _isTriggered = false;
     }
+
+    private bool IsForegroundWindowFullScreen()
+    {
+        IntPtr hwnd = GetForegroundWindow();
+        if (hwnd == IntPtr.Zero) return false;
+
+        if (hwnd == GetDesktopWindow() || hwnd == GetShellWindow()) return false;
+
+        GetWindowRect(hwnd, out Rectangle rect);
+        Screen screen = Screen.FromHandle(hwnd);
+
+        bool isSameSize = rect.Width == screen.Bounds.Width && rect.Height == screen.Bounds.Height;
+
+        int style = GetWindowLong(hwnd, GWL_STYLE);
+        bool hasNoBorder = (style & (int)WS_CAPTION) == 0;
+
+        return isSameSize && hasNoBorder;
+    }
+
+    // Group your Win32 Imports together
+    [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out Rectangle lpRect);
+    [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
+    [DllImport("user32.dll")] private static extern IntPtr GetShellWindow();
 
     private void ExecuteAction(int idx)
     {
@@ -714,6 +742,9 @@ public class MainForm : Form
     [DllImport("user32.dll")] static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
     [DllImport("user32.dll")] public static extern bool LockWorkStation();
     [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
+
+    private const int GWL_STYLE = -16;
+    private const uint WS_CAPTION = 0x00C00000;
 
     private void LoadConfig()
     {
