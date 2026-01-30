@@ -10,9 +10,9 @@ if exist obj rd /s /q obj
 echo Compiling process starting...
 :: 'AssemblyTitle' is a critical parameter for File Description
 dotnet publish -c Release -r win-x64 ^
-    -p:Version=1.1.0.0 ^
-    -p:FileVersion=1.1.0.0 ^
-    -p:AssemblyVersion=1.1.0.0 ^
+    -p:Version=1.2.0.0 ^
+    -p:FileVersion=1.2.0.0 ^
+    -p:AssemblyVersion=1.2.0.0 ^
     -p:Company="Osman Onur Koç" ^
     -p:Product="Windows Hot Corners" ^
     -p:AssemblyTitle="Linux Hot Corners implementation for Windows" ^
