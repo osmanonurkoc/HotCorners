@@ -581,27 +581,46 @@ public class MainForm : Form
         _headerPanel.Click += (s, e) => Process.Start(new ProcessStartInfo("https://www.osmanonurkoc.com") { UseShellExecute = true });
         Controls.Add(_headerPanel);
 
-        int y = 110, xLeft = 25, xRight = 215, labelH = 22, gap = 75;
+        // Layout configuration
+        int y = 110;
+        int labelH = 22;
+        int gap = 75;
 
-        CreateLabel("Top Left", xLeft, y); _cbTopLeft = CreateCombo(xLeft, y + labelH);
-        CreateLabel("Top Right", xRight, y); _cbTopRight = CreateCombo(xRight, y + labelH);
+        // Column coordinates for 2-column layout (Combos)
+        int colLeft = 25;
+        int colRight = 215;
+
+        // Row 1: Top Corners
+        CreateLabel("Top Left", colLeft, y); _cbTopLeft = CreateCombo(colLeft, y + labelH);
+        CreateLabel("Top Right", colRight, y); _cbTopRight = CreateCombo(colRight, y + labelH);
 
         y += gap;
-        CreateLabel("Bottom Left", xLeft, y); _cbBottomLeft = CreateCombo(xLeft, y + labelH);
-        CreateLabel("Bottom Right", xRight, y); _cbBottomRight = CreateCombo(xRight, y + labelH);
+
+        // Row 2: Bottom Corners
+        CreateLabel("Bottom Left", colLeft, y); _cbBottomLeft = CreateCombo(colLeft, y + labelH);
+        CreateLabel("Bottom Right", colRight, y); _cbBottomRight = CreateCombo(colRight, y + labelH);
 
         y += gap + 10;
-        CreateLabel("Sensitivity (px)", xLeft, y); _numSensitivity = CreateNumeric(xLeft, y + labelH, 1, 100);
-        CreateLabel("Cooldown (ms)", xRight, y); _numCooldown = CreateNumeric(xRight, y + labelH, 100, 5000);
 
-        // NEW: Trigger Delay Control
-        y += gap;
-        CreateLabel("Trigger Delay (ms)", xLeft, y);
-        _numTriggerDelay = CreateNumeric(xLeft, y + labelH, 0, 2000);
+        // Row 3: Numeric Settings (3 Columns in one row)
+        int x1 = 25;
+        int x2 = 155;
+        int x3 = 285;
+
+        CreateLabel("Sensitivity (px)", x1, y);
+        _numSensitivity = CreateNumeric(x1, y + labelH, 1, 100);
+
+        CreateLabel("Cooldown (ms)", x2, y);
+        _numCooldown = CreateNumeric(x2, y + labelH, 100, 5000);
+
+        CreateLabel("Trigger Delay (ms)", x3, y);
+        _numTriggerDelay = CreateNumeric(x3, y + labelH, 0, 2000);
 
         y += gap;
-        CreateLabel("Custom App Path", xLeft, y);
-        _txtCustomPath = new RoundedTextBox { Location = new Point(xLeft, y + labelH), Size = new Size(310, 36) };
+
+        // Row 4: Custom App Path
+        CreateLabel("Custom App Path", colLeft, y);
+        _txtCustomPath = new RoundedTextBox { Location = new Point(colLeft, y + labelH), Size = new Size(310, 36) };
         Controls.Add(_txtCustomPath);
 
         var btnBrowse = new ModernButton { Text = "...", Location = new Point(345, y + labelH), Size = new Size(40, 36) };
@@ -609,10 +628,13 @@ public class MainForm : Form
         Controls.Add(btnBrowse);
 
         y += 70;
-        _chkStartup = new ModernCheckBox { Text = "Run at Windows Startup", Location = new Point(xLeft, y) };
+
+        // Row 5: Startup Checkbox
+        _chkStartup = new ModernCheckBox { Text = "Run at Windows Startup", Location = new Point(colLeft, y) };
         Controls.Add(_chkStartup);
 
-        var btnSave = new ModernButton { Text = "Save & Minimize", Location = new Point(xLeft, y + 40), Size = new Size(360, 45), IsPrimary = true };
+        // Row 6: Save Button
+        var btnSave = new ModernButton { Text = "Save & Minimize", Location = new Point(colLeft, y + 40), Size = new Size(360, 45), IsPrimary = true };
         btnSave.Click += SaveAndHide;
         Controls.Add(btnSave);
     }
