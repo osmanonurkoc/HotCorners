@@ -32,6 +32,7 @@ public class Config
     public bool RunAtStartup { get; set; }
     public int Sensitivity { get; set; } = 10;
     public int Cooldown { get; set; } = 500;
+    public int TriggerDelay { get; set; } = 0;
     public string CustomAppPath { get; set; } = "";
 }
 
@@ -116,15 +117,16 @@ public static class Gfx
 }
 
 // --- CUSTOM CONTROLS ---
-// 1. MODERN NUMERIC UPDOWN
+// 1. MODERN NUMERIC UPDOWN (With Text Input)
 public class ModernNumericUpDown : Control
 {
     private int _value;
     private int _min = 0;
-    private int _max = 100;
+    private int _max = 5000;
     private bool _isUpHovered;
     private bool _isDownHovered;
     private readonly int _buttonWidth = 24;
+    private TextBox _txtInput;
 
     public event EventHandler? ValueChanged;
 
@@ -138,10 +140,15 @@ public class ModernNumericUpDown : Control
         {
             var old = _value;
             _value = Math.Max(_min, Math.Min(_max, value));
+
+            // Update Textbox but avoid recursive loops
+            if (_txtInput.Text != _value.ToString())
+                _txtInput.Text = _value.ToString();
+
             if (_value != old)
             {
-                Invalidate();
                 ValueChanged?.Invoke(this, EventArgs.Empty);
+                Invalidate();
             }
         }
     }
@@ -150,8 +157,76 @@ public class ModernNumericUpDown : Control
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, true);
         Size = new Size(100, 30);
-        Cursor = Cursors.Hand;
-        Font = new Font("Segoe UI", 10);
+        Cursor = Cursors.Default;
+
+        _txtInput = new TextBox
+        {
+            BorderStyle = BorderStyle.None,
+            Location = new Point(5, 6),
+            Width = Width - _buttonWidth - 8,
+            Anchor = AnchorStyles.Left | AnchorStyles.Right,
+            TextAlign = HorizontalAlignment.Center,
+            Font = new Font("Segoe UI", 10)
+        };
+
+        // Allow only digits and control characters
+        _txtInput.KeyPress += (s, e) => {
+            if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
+        };
+
+            _txtInput.TextChanged += (s, e) => {
+                if (int.TryParse(_txtInput.Text, out int result))
+                {
+                    // Check bounds but don't force it immediately while user is typing
+                    int clamped = Math.Max(_min, Math.Min(_max, result));
+                    if (_value != clamped)
+                    {
+                        _value = clamped;
+                        ValueChanged?.Invoke(this, EventArgs.Empty);
+                    }
+                }
+            };
+
+            // Validate and correct value when focus is lost
+            _txtInput.Leave += (s, e) => _txtInput.Text = _value.ToString();
+
+            Controls.Add(_txtInput);
+            UpdateTheme();
+    }
+
+    public void UpdateTheme()
+    {
+        this.BackColor = Theme.SurfaceColor;
+        _txtInput.BackColor = Theme.SurfaceColor;
+        _txtInput.ForeColor = Theme.TextColor;
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        // Handle dynamic theme changes
+        if (_txtInput.BackColor != Theme.SurfaceColor) UpdateTheme();
+
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.Clear(Theme.BackColor);
+
+        var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+        var path = Gfx.GetRoundedPath(rect, Theme.Radius);
+
+        // Background
+        using (var b = new SolidBrush(Theme.SurfaceColor)) e.Graphics.FillPath(b, path);
+        using (var p = new Pen(Theme.BorderColor)) e.Graphics.DrawPath(p, path);
+
+        // Separator Line
+        int lineX = Width - _buttonWidth;
+        using (var p = new Pen(Theme.BorderColor))
+        {
+            e.Graphics.DrawLine(p, lineX, 0, lineX, Height);
+            e.Graphics.DrawLine(p, lineX, Height / 2, Width, Height / 2);
+        }
+
+        // Draw Arrows
+        DrawArrow(e.Graphics, new Rectangle(lineX, 0, _buttonWidth, Height / 2), true, _isUpHovered);
+        DrawArrow(e.Graphics, new Rectangle(lineX, Height / 2, _buttonWidth, Height / 2), false, _isDownHovered);
     }
 
     protected override void OnMouseMove(MouseEventArgs e)
@@ -178,58 +253,29 @@ public class ModernNumericUpDown : Control
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
-        base.OnMouseDown(e);
+        // Handle button clicks
         if (e.X > Width - _buttonWidth)
         {
             if (e.Y < Height / 2) Value++;
             else Value--;
+            _txtInput.Text = Value.ToString(); // Sync text with value
         }
-    }
-
-    protected override void OnPaint(PaintEventArgs e)
-    {
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        e.Graphics.Clear(Theme.BackColor);
-
-        var rect = new Rectangle(0, 0, Width - 1, Height - 1);
-        var path = Gfx.GetRoundedPath(rect, Theme.Radius);
-
-        // Background
-        using (var b = new SolidBrush(Theme.SurfaceColor)) e.Graphics.FillPath(b, path);
-        using (var p = new Pen(Theme.BorderColor)) e.Graphics.DrawPath(p, path);
-
-        // Text
-        TextRenderer.DrawText(e.Graphics, Value.ToString(), Font, new Rectangle(5, 0, Width - _buttonWidth - 5, Height), Theme.TextColor, TextFormatFlags.VerticalCenter | TextFormatFlags.HorizontalCenter | TextFormatFlags.NoPrefix);
-
-        // Separator Line
-        int lineX = Width - _buttonWidth;
-        using (var p = new Pen(Theme.BorderColor))
-        {
-            e.Graphics.DrawLine(p, lineX, 0, lineX, Height);
-            e.Graphics.DrawLine(p, lineX, Height / 2, Width, Height / 2);
-        }
-
-        // Draw Arrows
-        DrawArrow(e.Graphics, new Rectangle(lineX, 0, _buttonWidth, Height / 2), true, _isUpHovered);
-        DrawArrow(e.Graphics, new Rectangle(lineX, Height / 2, _buttonWidth, Height / 2), false, _isDownHovered);
     }
 
     private void DrawArrow(Graphics g, Rectangle bounds, bool isUp, bool isHovered)
     {
         if (isHovered)
         {
-            using var b = new SolidBrush(Color.FromArgb(20, 120, 120, 120)); // Soft hover
+            using var b = new SolidBrush(Color.FromArgb(20, 120, 120, 120));
             g.FillRectangle(b, bounds);
         }
 
         int arrowSize = 4;
         var center = new Point(bounds.X + bounds.Width / 2, bounds.Y + bounds.Height / 2);
-
         Point[] points;
-        if (isUp)
-            points = [new(center.X - arrowSize, center.Y + 2), new(center.X + arrowSize, center.Y + 2), new(center.X, center.Y - 2)];
-        else
-            points = [new(center.X - arrowSize, center.Y - 2), new(center.X + arrowSize, center.Y - 2), new(center.X, center.Y + 2)];
+
+        if (isUp) points = [new(center.X - arrowSize, center.Y + 2), new(center.X + arrowSize, center.Y + 2), new(center.X, center.Y - 2)];
+        else points = [new(center.X - arrowSize, center.Y - 2), new(center.X + arrowSize, center.Y - 2), new(center.X, center.Y + 2)];
 
         using var brush = new SolidBrush(isHovered ? Theme.AccentColor : Theme.SubTextColor);
         g.FillPolygon(brush, points);
@@ -420,9 +466,10 @@ public class MainForm : Form
     private string _configPath = "";
     private string _appDataFolder = "";
     private DateTime _lastTriggerTime = DateTime.MinValue;
+    private DateTime? _cornerEntryTime = null; // Track when mouse enters corner
 
     private ModernComboBox? _cbTopLeft, _cbTopRight, _cbBottomLeft, _cbBottomRight;
-    private ModernNumericUpDown? _numSensitivity, _numCooldown;
+    private ModernNumericUpDown? _numSensitivity, _numCooldown, _numTriggerDelay; // Added _numTriggerDelay
     private RoundedTextBox? _txtCustomPath;
     private ModernCheckBox? _chkStartup;
     private Panel? _headerPanel;
@@ -547,6 +594,11 @@ public class MainForm : Form
         CreateLabel("Sensitivity (px)", xLeft, y); _numSensitivity = CreateNumeric(xLeft, y + labelH, 1, 100);
         CreateLabel("Cooldown (ms)", xRight, y); _numCooldown = CreateNumeric(xRight, y + labelH, 100, 5000);
 
+        // NEW: Trigger Delay Control
+        y += gap;
+        CreateLabel("Trigger Delay (ms)", xLeft, y);
+        _numTriggerDelay = CreateNumeric(xLeft, y + labelH, 0, 2000);
+
         y += gap;
         CreateLabel("Custom App Path", xLeft, y);
         _txtCustomPath = new RoundedTextBox { Location = new Point(xLeft, y + labelH), Size = new Size(310, 36) };
@@ -644,6 +696,7 @@ public class MainForm : Form
             "RunAtStartup": {{(_chkStartup?.Checked ?? false).ToString().ToLower()}},
             "Sensitivity": {{_numSensitivity?.Value ?? 10}},
             "Cooldown": {{_numCooldown?.Value ?? 500}},
+            "TriggerDelay": {{_numTriggerDelay?.Value ?? 0}},
             "CustomAppPath": "{{_txtCustomPath?.InnerTextBox.Text.Replace("\\", "\\\\") ?? ""}}"
         }
         """;
@@ -667,11 +720,22 @@ public class MainForm : Form
 
     private void CheckCorners(object? sender, EventArgs e)
     {
+        // Cooldown check
         if ((DateTime.Now - _lastTriggerTime).TotalMilliseconds < (_numCooldown?.Value ?? 500)) return;
-        if (GetAsyncKeyState(0x01) < 0 || GetAsyncKeyState(0x02) < 0) return;
 
-        // Check for full-screen applications or games
-        if (IsForegroundWindowFullScreen()) return;
+        // Safety check: Don't trigger if mouse buttons are pressed
+        if (GetAsyncKeyState(0x01) < 0 || GetAsyncKeyState(0x02) < 0)
+        {
+            _cornerEntryTime = null; // Reset timer if clicked
+            return;
+        }
+
+        // Fullscreen check
+        if (IsForegroundWindowFullScreen())
+        {
+            _cornerEntryTime = null;
+            return;
+        }
 
         Point cursor = Cursor.Position;
         Rectangle screen = Screen.PrimaryScreen!.Bounds;
@@ -684,17 +748,35 @@ public class MainForm : Form
 
         if (tl || tr || bl || br)
         {
-            if (!_isTriggered)
+            // Mouse is in a corner
+            if (_isTriggered) return; // Already triggered, do nothing
+
+            // Is this a new entry?
+            if (_cornerEntryTime == null)
+            {
+                _cornerEntryTime = DateTime.Now;
+            }
+
+            // Check if delay has passed
+            int delay = _numTriggerDelay?.Value ?? 0;
+            if ((DateTime.Now - _cornerEntryTime.Value).TotalMilliseconds >= delay)
             {
                 _isTriggered = true;
                 _lastTriggerTime = DateTime.Now;
+                _cornerEntryTime = null; // Reset timer
+
                 if (tl) ExecuteAction(_cbTopLeft?.SelectedIndex ?? 0);
                 else if (tr) ExecuteAction(_cbTopRight?.SelectedIndex ?? 0);
                 else if (bl) ExecuteAction(_cbBottomLeft?.SelectedIndex ?? 0);
                 else if (br) ExecuteAction(_cbBottomRight?.SelectedIndex ?? 0);
             }
         }
-        else _isTriggered = false;
+        else
+        {
+            // Mouse left the corner
+            _isTriggered = false;
+            _cornerEntryTime = null; // Reset timer
+        }
     }
 
     private bool IsForegroundWindowFullScreen()
@@ -760,6 +842,9 @@ public class MainForm : Form
                 if (_chkStartup != null) _chkStartup.Checked = content.Contains("\"RunAtStartup\": true");
                 if (_numSensitivity != null) _numSensitivity.Value = GetVal(content, "Sensitivity");
                 if (_numCooldown != null) _numCooldown.Value = GetVal(content, "Cooldown");
+
+                // ADD THIS LINE
+                if (_numTriggerDelay != null) _numTriggerDelay.Value = GetVal(content, "TriggerDelay");
 
                 // Manual parsing for custom path
                 int start = content.IndexOf("CustomAppPath") + 16;
