@@ -8,6 +8,8 @@ A lightweight, native C# application that brings the productivity of macOS/Linux
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)
 ![Runtime](https://img.shields.io/badge/.NET-6.0%2B-512BD4.svg)
+![Downloads](https://img.shields.io/github/downloads/osmanonurkoc/HotCorners/total)
+![Release](https://img.shields.io/github/v/release/osmanonurkoc/HotCorners)
 
 ## 📸 Overview
 
