@@ -17,6 +17,7 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using System.Diagnostics;
 using System.Reflection;
+using System.ComponentModel;
 
 namespace HotCornersApp;
 
@@ -130,9 +131,13 @@ public class ModernNumericUpDown : Control
 
     public event EventHandler? ValueChanged;
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int Minimum { get => _min; set => _min = value; }
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int Maximum { get => _max; set => _max = value; }
 
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public int Value
     {
         get => _value;
@@ -328,7 +333,8 @@ public class ModernComboBox : ComboBox
         Color txtColor = isSelected ? Color.White : Theme.TextColor;
 
         using (var b = new SolidBrush(selColor)) e.Graphics.FillRectangle(b, e.Bounds);
-        TextRenderer.DrawText(e.Graphics, Items[e.Index].ToString(), Font, new Point(e.Bounds.X + 5, e.Bounds.Y + 3), txtColor, TextFormatFlags.NoPrefix);
+
+        TextRenderer.DrawText(e.Graphics, Items[e.Index]?.ToString() ?? "", Font, new Point(e.Bounds.X + 5, e.Bounds.Y + 3), txtColor, TextFormatFlags.NoPrefix);
     }
 }
 
@@ -375,6 +381,7 @@ public class ModernCheckBox : CheckBox
 // 4. MODERN BUTTON
 public class ModernButton : Button
 {
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
     public bool IsPrimary { get; set; }
     private bool _isHovered;
 
@@ -655,7 +662,7 @@ public class MainForm : Form
         var subFont = new Font("Segoe UI", 9, FontStyle.Regular);
 
         float totalWidth = iconSize + spacing + Math.Max(e.Graphics.MeasureString(title, titleFont).Width, e.Graphics.MeasureString(subtitle, subFont).Width);
-        float startX = (_headerPanel!.Width - totalWidth) / 2;
+        float startX = ((_headerPanel?.Width ?? 420) - totalWidth) / 2;
         float startY = 25;
 
         var rect = new Rectangle((int)startX, (int)startY, iconSize, iconSize);
@@ -742,6 +749,9 @@ public class MainForm : Form
 
     private void CheckCorners(object? sender, EventArgs e)
     {
+        var primaryScreen = Screen.PrimaryScreen;
+        if (primaryScreen is null) return;
+
         // Cooldown check
         if ((DateTime.Now - _lastTriggerTime).TotalMilliseconds < (_numCooldown?.Value ?? 500)) return;
 
@@ -760,7 +770,8 @@ public class MainForm : Form
         }
 
         Point cursor = Cursor.Position;
-        Rectangle screen = Screen.PrimaryScreen!.Bounds;
+
+        Rectangle screen = primaryScreen.Bounds;
         int s = _numSensitivity?.Value ?? 10;
 
         bool tl = (cursor.X < s && cursor.Y < s);
@@ -809,7 +820,9 @@ public class MainForm : Form
         if (hwnd == GetDesktopWindow() || hwnd == GetShellWindow()) return false;
 
         GetWindowRect(hwnd, out Rectangle rect);
-        Screen screen = Screen.FromHandle(hwnd);
+
+        Screen? screen = Screen.FromHandle(hwnd);
+        if (screen is null) return false;
 
         bool isSameSize = rect.Width == screen.Bounds.Width && rect.Height == screen.Bounds.Height;
 
