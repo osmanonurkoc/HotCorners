@@ -22,7 +22,7 @@ using System.ComponentModel;
 namespace HotCornersApp;
 
 /// <summary>
-/// Represents the application configuration settings.
+/// Application configuration schema.
 /// </summary>
 public class Config
 {
@@ -38,11 +38,10 @@ public class Config
 }
 
 /// <summary>
-/// Handles system theme detection (Light/Dark mode) and provides the color palette for the UI.
+/// Manages system theme detection and UI color palette.
 /// </summary>
 public static class Theme
 {
-    // Active Colors (Used by Custom Controls)
     public static Color BackColor { get; private set; }
     public static Color SurfaceColor { get; private set; }
     public static Color TextColor { get; private set; }
@@ -53,16 +52,12 @@ public static class Theme
     public static int Radius = 8;
     public static bool IsDarkMode { get; private set; }
 
-    /// <summary>
-    /// Checks the Windows Registry for the current app theme and updates the color palette.
-    /// </summary>
     public static void ApplySystemTheme()
     {
-        IsDarkMode = GetSystemTheme() == 0; // 0 = Dark, 1 = Light
+        IsDarkMode = GetSystemTheme() == 0;
 
         if (IsDarkMode)
         {
-            // Dark Mode Palette
             BackColor = Color.FromArgb(32, 32, 32);
             SurfaceColor = Color.FromArgb(45, 45, 48);
             TextColor = Color.FromArgb(243, 243, 243);
@@ -73,7 +68,6 @@ public static class Theme
         }
         else
         {
-            // Light Mode Palette
             BackColor = Color.FromArgb(243, 243, 243);
             SurfaceColor = Color.FromArgb(255, 255, 255);
             TextColor = Color.FromArgb(32, 32, 32);
@@ -84,10 +78,6 @@ public static class Theme
         }
     }
 
-    /// <summary>
-    /// Reads the 'AppsUseLightTheme' value from the Windows Registry.
-    /// </summary>
-    /// <returns>1 for Light Mode, 0 for Dark Mode.</returns>
     private static int GetSystemTheme()
     {
         try
@@ -95,12 +85,12 @@ public static class Theme
             using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
             return key?.GetValue("AppsUseLightTheme") is int val ? val : 0;
         }
-        catch { return 0; } // Default to Dark Mode on error
+        catch { return 0; }
     }
 }
 
 /// <summary>
-/// Helper class for GDI+ drawing operations.
+/// GDI+ helper methods.
 /// </summary>
 public static class Gfx
 {
@@ -118,7 +108,7 @@ public static class Gfx
 }
 
 // --- CUSTOM CONTROLS ---
-// 1. MODERN NUMERIC UPDOWN (With Text Input)
+
 public class ModernNumericUpDown : Control
 {
     private int _value;
@@ -146,7 +136,6 @@ public class ModernNumericUpDown : Control
             var old = _value;
             _value = Math.Max(_min, Math.Min(_max, value));
 
-            // Update Textbox but avoid recursive loops
             if (_txtInput.Text != _value.ToString())
                 _txtInput.Text = _value.ToString();
 
@@ -174,7 +163,6 @@ public class ModernNumericUpDown : Control
             Font = new Font("Segoe UI", 10)
         };
 
-        // Allow only digits and control characters
         _txtInput.KeyPress += (s, e) => {
             if (!char.IsControl(e.KeyChar) && !char.IsDigit(e.KeyChar)) e.Handled = true;
         };
@@ -182,7 +170,6 @@ public class ModernNumericUpDown : Control
             _txtInput.TextChanged += (s, e) => {
                 if (int.TryParse(_txtInput.Text, out int result))
                 {
-                    // Check bounds but don't force it immediately while user is typing
                     int clamped = Math.Max(_min, Math.Min(_max, result));
                     if (_value != clamped)
                     {
@@ -192,7 +179,6 @@ public class ModernNumericUpDown : Control
                 }
             };
 
-            // Validate and correct value when focus is lost
             _txtInput.Leave += (s, e) => _txtInput.Text = _value.ToString();
 
             Controls.Add(_txtInput);
@@ -201,14 +187,13 @@ public class ModernNumericUpDown : Control
 
     public void UpdateTheme()
     {
-        this.BackColor = Theme.SurfaceColor;
+        BackColor = Theme.SurfaceColor;
         _txtInput.BackColor = Theme.SurfaceColor;
         _txtInput.ForeColor = Theme.TextColor;
     }
 
     protected override void OnPaint(PaintEventArgs e)
     {
-        // Handle dynamic theme changes
         if (_txtInput.BackColor != Theme.SurfaceColor) UpdateTheme();
 
         e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
@@ -217,11 +202,9 @@ public class ModernNumericUpDown : Control
         var rect = new Rectangle(0, 0, Width - 1, Height - 1);
         var path = Gfx.GetRoundedPath(rect, Theme.Radius);
 
-        // Background
         using (var b = new SolidBrush(Theme.SurfaceColor)) e.Graphics.FillPath(b, path);
         using (var p = new Pen(Theme.BorderColor)) e.Graphics.DrawPath(p, path);
 
-        // Separator Line
         int lineX = Width - _buttonWidth;
         using (var p = new Pen(Theme.BorderColor))
         {
@@ -229,7 +212,6 @@ public class ModernNumericUpDown : Control
             e.Graphics.DrawLine(p, lineX, Height / 2, Width, Height / 2);
         }
 
-        // Draw Arrows
         DrawArrow(e.Graphics, new Rectangle(lineX, 0, _buttonWidth, Height / 2), true, _isUpHovered);
         DrawArrow(e.Graphics, new Rectangle(lineX, Height / 2, _buttonWidth, Height / 2), false, _isDownHovered);
     }
@@ -258,12 +240,11 @@ public class ModernNumericUpDown : Control
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
-        // Handle button clicks
         if (e.X > Width - _buttonWidth)
         {
             if (e.Y < Height / 2) Value++;
             else Value--;
-            _txtInput.Text = Value.ToString(); // Sync text with value
+            _txtInput.Text = Value.ToString();
         }
     }
 
@@ -287,7 +268,6 @@ public class ModernNumericUpDown : Control
     }
 }
 
-// 2. MODERN COMBOBOX
 public class ModernComboBox : ComboBox
 {
     public ModernComboBox()
@@ -316,7 +296,6 @@ public class ModernComboBox : ComboBox
         var textRect = new Rectangle(8, 0, Width - 30, Height);
         TextRenderer.DrawText(e.Graphics, text, Font, textRect, Theme.TextColor, TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 
-        // Arrow
         var arrowX = Width - 20;
         var arrowY = Height / 2 - 2;
         Point[] points = [new(arrowX, arrowY), new(arrowX + 9, arrowY), new(arrowX + 4, arrowY + 5)];
@@ -338,7 +317,6 @@ public class ModernComboBox : ComboBox
     }
 }
 
-// 3. MODERN CHECKBOX
 public class ModernCheckBox : CheckBox
 {
     public ModernCheckBox()
@@ -378,7 +356,6 @@ public class ModernCheckBox : CheckBox
     }
 }
 
-// 4. MODERN BUTTON
 public class ModernButton : Button
 {
     [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -430,7 +407,6 @@ public class ModernButton : Button
     }
 }
 
-// 5. ROUNDED TEXTBOX
 public class RoundedTextBox : Panel
 {
     public TextBox InnerTextBox;
@@ -443,13 +419,12 @@ public class RoundedTextBox : Panel
         Controls.Add(InnerTextBox);
     }
 
-    // Updates inner controls when theme changes
     public void UpdateTheme()
     {
-        this.BackColor = Theme.SurfaceColor;
+        BackColor = Theme.SurfaceColor;
         InnerTextBox.BackColor = Theme.SurfaceColor;
         InnerTextBox.ForeColor = Theme.TextColor;
-        this.Invalidate();
+        Invalidate();
     }
 
     protected override void OnPaint(PaintEventArgs e)
@@ -465,6 +440,7 @@ public class RoundedTextBox : Panel
 }
 
 // --- MAIN FORM ---
+
 public class MainForm : Form
 {
     private NotifyIcon? _trayIcon;
@@ -473,24 +449,36 @@ public class MainForm : Form
     private string _configPath = "";
     private string _appDataFolder = "";
     private DateTime _lastTriggerTime = DateTime.MinValue;
-    private DateTime? _cornerEntryTime = null; // Track when mouse enters corner
+    private DateTime? _cornerEntryTime = null;
 
     private ModernComboBox? _cbTopLeft, _cbTopRight, _cbBottomLeft, _cbBottomRight;
-    private ModernNumericUpDown? _numSensitivity, _numCooldown, _numTriggerDelay; // Added _numTriggerDelay
+    private ModernNumericUpDown? _numSensitivity, _numCooldown, _numTriggerDelay;
     private RoundedTextBox? _txtCustomPath;
     private ModernCheckBox? _chkStartup;
     private Panel? _headerPanel;
     private bool _allowVisible = true;
     private bool _isTriggered = false;
 
-    private readonly string[] _actions = { "None", "Trigger VirtualSpace Grid", "Native Task View (Win+Tab)", "Launch Custom App", "Show Desktop", "Lock Screen", "Action Center", "File Explorer" };
+    private readonly string[] _actions = {
+        "None",
+        "Trigger VirtualSpace Grid",
+        "Native Task View (Win+Tab)",
+        "Launch Custom App",
+        "Show Desktop",
+        "Lock Screen",
+        "Action Center",
+        "File Explorer",
+        "Minimize All Windows",
+        "Start Menu",
+        "Start Screen Saver",
+        "Task Manager"
+    };
 
     public MainForm(bool startHidden)
     {
         _allowVisible = !startHidden;
         InitPaths();
 
-        // 1. Initial Theme Load
         Theme.ApplySystemTheme();
 
         Text = "Windows Hot Corners";
@@ -499,9 +487,7 @@ public class MainForm : Form
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
 
-        // 2. Apply Theme to Form
         ApplyFormTheme();
-
         Application.SetHighDpiMode(HighDpiMode.SystemAware);
 
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath); } catch { }
@@ -510,7 +496,6 @@ public class MainForm : Form
         LoadConfig();
         InitializeTray();
 
-        // 3. Listen for System Theme Changes
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
         _pollTimer = new System.Windows.Forms.Timer { Interval = 50 };
@@ -518,13 +503,11 @@ public class MainForm : Form
         _pollTimer.Start();
     }
 
-    // --- THEME UPDATE LOGIC ---
     private void OnUserPreferenceChanged(object sender, UserPreferenceChangedEventArgs e)
     {
         if (e.Category == UserPreferenceCategory.General)
         {
             Theme.ApplySystemTheme();
-            // Invoke on UI Thread
             if (InvokeRequired) Invoke(new Action(ApplyFormTheme));
             else ApplyFormTheme();
         }
@@ -535,17 +518,11 @@ public class MainForm : Form
         BackColor = Theme.BackColor;
         ForeColor = Theme.TextColor;
 
-        // DWM TitleBar Color (Attribute 20 = DWMWA_USE_IMMERSIVE_DARK_MODE)
         int useImmersiveDarkMode = Theme.IsDarkMode ? 1 : 0;
         DwmSetWindowAttribute(Handle, 20, ref useImmersiveDarkMode, sizeof(int));
 
-        // Repaint all controls
         RefreshControls(this);
-
-        // Special handling for the composite TextBox
         _txtCustomPath?.UpdateTheme();
-
-        // Redraw Header
         _headerPanel?.Invalidate();
     }
 
@@ -556,10 +533,10 @@ public class MainForm : Form
         parent.Invalidate();
         foreach (Control c in parent.Controls)
         {
-            if (c is Label) c.ForeColor = Theme.SubTextColor; // Keep labels mostly subtle
+            if (c is Label) c.ForeColor = Theme.SubTextColor;
             if (c is ModernButton || c is ModernComboBox || c is ModernCheckBox || c is ModernNumericUpDown)
             {
-                c.Invalidate(); // Trigger OnPaint
+                c.Invalidate();
             }
             if (c.HasChildren) RefreshControls(c);
         }
@@ -588,28 +565,23 @@ public class MainForm : Form
         _headerPanel.Click += (s, e) => Process.Start(new ProcessStartInfo("https://www.osmanonurkoc.com") { UseShellExecute = true });
         Controls.Add(_headerPanel);
 
-        // Layout configuration
         int y = 110;
         int labelH = 22;
         int gap = 75;
 
-        // Column coordinates for 2-column layout (Combos)
         int colLeft = 25;
         int colRight = 215;
 
-        // Row 1: Top Corners
         CreateLabel("Top Left", colLeft, y); _cbTopLeft = CreateCombo(colLeft, y + labelH);
         CreateLabel("Top Right", colRight, y); _cbTopRight = CreateCombo(colRight, y + labelH);
 
         y += gap;
 
-        // Row 2: Bottom Corners
         CreateLabel("Bottom Left", colLeft, y); _cbBottomLeft = CreateCombo(colLeft, y + labelH);
         CreateLabel("Bottom Right", colRight, y); _cbBottomRight = CreateCombo(colRight, y + labelH);
 
         y += gap + 10;
 
-        // Row 3: Numeric Settings (3 Columns in one row)
         int x1 = 25;
         int x2 = 155;
         int x3 = 285;
@@ -625,7 +597,6 @@ public class MainForm : Form
 
         y += gap;
 
-        // Row 4: Custom App Path
         CreateLabel("Custom App Path", colLeft, y);
         _txtCustomPath = new RoundedTextBox { Location = new Point(colLeft, y + labelH), Size = new Size(310, 36) };
         Controls.Add(_txtCustomPath);
@@ -636,11 +607,9 @@ public class MainForm : Form
 
         y += 70;
 
-        // Row 5: Startup Checkbox
         _chkStartup = new ModernCheckBox { Text = "Run at Windows Startup", Location = new Point(colLeft, y) };
         Controls.Add(_chkStartup);
 
-        // Row 6: Save Button
         var btnSave = new ModernButton { Text = "Save & Minimize", Location = new Point(colLeft, y + 40), Size = new Size(360, 45), IsPrimary = true };
         btnSave.Click += SaveAndHide;
         Controls.Add(btnSave);
@@ -650,8 +619,6 @@ public class MainForm : Form
     {
         e.Graphics.SmoothingMode = SmoothingMode.HighQuality;
         e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
-        // Clear with Theme Background
         e.Graphics.Clear(Theme.BackColor);
 
         int iconSize = 40;
@@ -752,17 +719,14 @@ public class MainForm : Form
         var primaryScreen = Screen.PrimaryScreen;
         if (primaryScreen is null) return;
 
-        // Cooldown check
         if ((DateTime.Now - _lastTriggerTime).TotalMilliseconds < (_numCooldown?.Value ?? 500)) return;
 
-        // Safety check: Don't trigger if mouse buttons are pressed
         if (GetAsyncKeyState(0x01) < 0 || GetAsyncKeyState(0x02) < 0)
         {
-            _cornerEntryTime = null; // Reset timer if clicked
+            _cornerEntryTime = null;
             return;
         }
 
-        // Fullscreen check
         if (IsForegroundWindowFullScreen())
         {
             _cornerEntryTime = null;
@@ -770,7 +734,6 @@ public class MainForm : Form
         }
 
         Point cursor = Cursor.Position;
-
         Rectangle screen = primaryScreen.Bounds;
         int s = _numSensitivity?.Value ?? 10;
 
@@ -781,22 +744,19 @@ public class MainForm : Form
 
         if (tl || tr || bl || br)
         {
-            // Mouse is in a corner
-            if (_isTriggered) return; // Already triggered, do nothing
+            if (_isTriggered) return;
 
-            // Is this a new entry?
             if (_cornerEntryTime == null)
             {
                 _cornerEntryTime = DateTime.Now;
             }
 
-            // Check if delay has passed
             int delay = _numTriggerDelay?.Value ?? 0;
             if ((DateTime.Now - _cornerEntryTime.Value).TotalMilliseconds >= delay)
             {
                 _isTriggered = true;
                 _lastTriggerTime = DateTime.Now;
-                _cornerEntryTime = null; // Reset timer
+                _cornerEntryTime = null;
 
                 if (tl) ExecuteAction(_cbTopLeft?.SelectedIndex ?? 0);
                 else if (tr) ExecuteAction(_cbTopRight?.SelectedIndex ?? 0);
@@ -806,9 +766,8 @@ public class MainForm : Form
         }
         else
         {
-            // Mouse left the corner
             _isTriggered = false;
-            _cornerEntryTime = null; // Reset timer
+            _cornerEntryTime = null;
         }
     }
 
@@ -832,36 +791,44 @@ public class MainForm : Form
         return isSameSize && hasNoBorder;
     }
 
-    // Group your Win32 Imports together
+    // --- Win32 Imports ---
+
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out Rectangle lpRect);
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
     [DllImport("user32.dll")] private static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, int wParam, int lParam);
+    [DllImport("user32.dll")] static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
+    [DllImport("user32.dll")] public static extern bool LockWorkStation();
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
+
+    private const uint WM_SYSCOMMAND = 0x0112;
+    private const int SC_SCREENSAVE = 0xF140;
+    private const int GWL_STYLE = -16;
+    private const uint WS_CAPTION = 0x00C00000;
 
     private void ExecuteAction(int idx)
     {
         switch (idx)
         {
             case 1: SendKeysTriple(0x11, 0x10, 0x09); break; // Ctrl+Shift+Tab
-            case 2: SendKeys(0x5B, 0x09); break; // Win+Tab (Task View)
+            case 2: SendKeys(0x5B, 0x09); break; // Win+Tab
             case 3: try { Process.Start(new ProcessStartInfo(_txtCustomPath?.InnerTextBox.Text ?? "") { UseShellExecute = true }); } catch { } break;
-            case 4: SendKeys(0x5B, 0x44); break; // Win+D (Show Desktop)
+            case 4: SendKeys(0x5B, 0x44); break; // Win+D
             case 5: LockWorkStation(); break;
-            case 6: SendKeys(0x5B, 0x41); break; // Win+A (Action Center)
-            case 7: SendKeys(0x5B, 0x45); break; // Win+E (File Explorer)
+            case 6: SendKeys(0x5B, 0x41); break; // Win+A
+            case 7: SendKeys(0x5B, 0x45); break; // Win+E
+            case 8: SendKeys(0x5B, 0x4D); break; // Win+M
+            case 9: SendSingleKey(0x5B); break; // Win
+            case 10: SendMessage(GetDesktopWindow(), WM_SYSCOMMAND, SC_SCREENSAVE, 0); break;
+            case 11: SendKeysTriple(0x11, 0x10, 0x1B); break; // Ctrl+Shift+Esc
         }
     }
 
+    private void SendSingleKey(byte k1) { keybd_event(k1, 0, 0, 0); keybd_event(k1, 0, 2, 0); }
     private void SendKeys(byte k1, byte k2) { keybd_event(k1, 0, 0, 0); keybd_event(k2, 0, 0, 0); keybd_event(k2, 0, 2, 0); keybd_event(k1, 0, 2, 0); }
     private void SendKeysTriple(byte k1, byte k2, byte k3) { keybd_event(k1, 0, 0, 0); keybd_event(k2, 0, 0, 0); keybd_event(k3, 0, 0, 0); keybd_event(k3, 0, 2, 0); keybd_event(k2, 0, 2, 0); keybd_event(k1, 0, 2, 0); }
-
-    [DllImport("user32.dll")] static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
-    [DllImport("user32.dll")] public static extern bool LockWorkStation();
-    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
-
-    private const int GWL_STYLE = -16;
-    private const uint WS_CAPTION = 0x00C00000;
 
     private void LoadConfig()
     {
@@ -877,11 +844,8 @@ public class MainForm : Form
                 if (_chkStartup != null) _chkStartup.Checked = content.Contains("\"RunAtStartup\": true");
                 if (_numSensitivity != null) _numSensitivity.Value = GetVal(content, "Sensitivity");
                 if (_numCooldown != null) _numCooldown.Value = GetVal(content, "Cooldown");
-
-                // ADD THIS LINE
                 if (_numTriggerDelay != null) _numTriggerDelay.Value = GetVal(content, "TriggerDelay");
 
-                // Manual parsing for custom path
                 int start = content.IndexOf("CustomAppPath") + 16;
                 int end = content.LastIndexOf("\"");
                 if (start > 15 && end > start && _txtCustomPath != null)
@@ -891,7 +855,6 @@ public class MainForm : Form
         }
     }
 
-    // Helper for manual JSON parsing (avoids external dependencies)
     private int GetVal(string json, string key)
     {
         try
@@ -916,7 +879,6 @@ public class MainForm : Form
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         if (e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Hide(); }
-        // Ensure we detach the event listener to prevent leaks
         SystemEvents.UserPreferenceChanged -= OnUserPreferenceChanged;
         base.OnFormClosing(e);
     }
