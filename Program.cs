@@ -18,6 +18,9 @@ using Microsoft.Win32;
 using System.Diagnostics;
 using System.Reflection;
 using System.ComponentModel;
+using System.Collections.Generic;
+using System.Text.Json;
+using System.IO;
 
 namespace HotCornersApp;
 
@@ -26,15 +29,17 @@ namespace HotCornersApp;
 /// </summary>
 public class Config
 {
-    public int TopLeft { get; set; }
-    public int TopRight { get; set; }
-    public int BottomLeft { get; set; }
-    public int BottomRight { get; set; }
-    public bool RunAtStartup { get; set; }
+    public int TopLeft { get; set; } = 0;
+    public int TopRight { get; set; } = 0;
+    public int BottomLeft { get; set; } = 0;
+    public int BottomRight { get; set; } = 0;
+    public bool RunAtStartup { get; set; } = false;
     public int Sensitivity { get; set; } = 10;
     public int Cooldown { get; set; } = 500;
     public int TriggerDelay { get; set; } = 0;
-    public string CustomAppPath { get; set; } = "";
+
+    public string[] CustomAppPaths { get; set; } = new string[4] { "", "", "", "" };
+    public string[] CustomHotkeys { get; set; } = new string[4] { "", "", "", "" };
 }
 
 /// <summary>
@@ -426,7 +431,7 @@ public class RoundedTextBox : Panel
     {
         Padding = new Padding(10, 8, 10, 8);
         BackColor = Theme.SurfaceColor;
-        Size = new Size(200, 36);
+        Size = new Size(310, 36);
         InnerTextBox = new TextBox { BorderStyle = BorderStyle.None, BackColor = Theme.SurfaceColor, ForeColor = Theme.TextColor, Dock = DockStyle.Fill, Font = new Font("Segoe UI", 10) };
         Controls.Add(InnerTextBox);
     }
@@ -451,6 +456,267 @@ public class RoundedTextBox : Panel
     }
 }
 
+/// <summary>
+/// A robust UI Control for capturing custom keyboard shortcuts.
+/// </summary>
+public class HotkeyInputBox : Panel
+{
+    public TextBox InnerTextBox;
+    public ModernButton BtnClear;
+
+    public List<byte> Hotkeys = new();
+    private bool _isListening = false;
+
+    public event EventHandler? HotkeyChanged;
+
+    [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+    public string KeysString { get; set; } = "";
+
+    private const int WH_KEYBOARD_LL = 13;
+    private const int WM_KEYDOWN = 0x0100;
+    private const int WM_SYSKEYDOWN = 0x0104;
+    private const int WM_KEYUP = 0x0101;
+    private const int WM_SYSKEYUP = 0x0105;
+
+    private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+    private LowLevelKeyboardProc _proc;
+    private IntPtr _hookID = IntPtr.Zero;
+    private HashSet<byte> _currentPressed = new();
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr GetModuleHandle(string? lpModuleName);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr LoadLibrary(string lpFileName);
+
+    public HotkeyInputBox()
+    {
+        _proc = HookCallback;
+
+        Padding = new Padding(10, 8, 10, 8);
+        BackColor = Theme.SurfaceColor;
+
+        BtnClear = new ModernButton { Text = "X", Size = new Size(24, 24), Cursor = Cursors.Hand };
+        BtnClear.Click += (s, e) => {
+            Hotkeys.Clear();
+            KeysString = "";
+            RenderText();
+            HotkeyChanged?.Invoke(this, EventArgs.Empty);
+        };
+
+        InnerTextBox = new TextBox {
+            BorderStyle = BorderStyle.None,
+            BackColor = Theme.SurfaceColor,
+            ForeColor = Theme.TextColor,
+            Font = new Font("Segoe UI", 10),
+            ReadOnly = true,
+            Cursor = Cursors.Hand,
+            ShortcutsEnabled = false
+        };
+
+        Size = new Size(310, 36);
+
+        Controls.Add(BtnClear);
+        Controls.Add(InnerTextBox);
+
+        InnerTextBox.PreviewKeyDown += (s, e) => e.IsInputKey = true;
+        InnerTextBox.Enter += (s, e) => StartListening();
+        InnerTextBox.Leave += (s, e) => StopListening();
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        if (BtnClear == null || InnerTextBox == null) return;
+
+        BtnClear.Location = new Point(Width - BtnClear.Width - 8, (Height - BtnClear.Height) / 2);
+        InnerTextBox.Location = new Point(10, 8);
+        InnerTextBox.Width = BtnClear.Left - InnerTextBox.Left - 5;
+    }
+
+    public void StartListening()
+    {
+        if (_isListening) return;
+        _isListening = true;
+        _currentPressed.Clear();
+        RenderText();
+        SetHook();
+        Invalidate();
+    }
+
+    public void StopListening()
+    {
+        if (!_isListening) return;
+        _isListening = false;
+        RemoveHook();
+        RenderText();
+        Invalidate();
+    }
+
+    private void SetHook()
+    {
+        if (_hookID != IntPtr.Zero) return;
+
+        IntPtr hModule = GetModuleHandle(null);
+        if (hModule == IntPtr.Zero)
+            hModule = LoadLibrary("user32.dll");
+
+        _hookID = SetWindowsHookEx(WH_KEYBOARD_LL, _proc, hModule, 0);
+    }
+
+    private void RemoveHook()
+    {
+        if (_hookID != IntPtr.Zero)
+        {
+            UnhookWindowsHookEx(_hookID);
+            _hookID = IntPtr.Zero;
+        }
+    }
+
+    private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+    {
+        if (nCode >= 0)
+        {
+            int msg = wParam.ToInt32();
+            int vkCode = Marshal.ReadInt32(lParam);
+            byte code = (byte)vkCode;
+
+            if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+            {
+                if (_currentPressed.Count == 0) Hotkeys.Clear();
+
+                _currentPressed.Add(code);
+                UpdateHotkeysFromPressed();
+                return (IntPtr)1;
+            }
+            else if (msg == WM_KEYUP || msg == WM_SYSKEYUP)
+            {
+                _currentPressed.Remove(code);
+                return (IntPtr)1;
+            }
+        }
+        return CallNextHookEx(_hookID, nCode, wParam, lParam);
+    }
+
+    private void UpdateHotkeysFromPressed()
+    {
+        Hotkeys.Clear();
+
+        bool hasCtrl = _currentPressed.Contains(0xA2) || _currentPressed.Contains(0xA3) || _currentPressed.Contains(0x11);
+        bool hasShift = _currentPressed.Contains(0xA0) || _currentPressed.Contains(0xA1) || _currentPressed.Contains(0x10);
+        bool hasAlt = _currentPressed.Contains(0xA4) || _currentPressed.Contains(0xA5) || _currentPressed.Contains(0x12);
+        bool hasWin = _currentPressed.Contains(0x5B) || _currentPressed.Contains(0x5C);
+
+        if (hasCtrl) Hotkeys.Add(0x11);
+        if (hasShift) Hotkeys.Add(0x10);
+        if (hasAlt) Hotkeys.Add(0x12);
+        if (hasWin) Hotkeys.Add(0x5B);
+
+        foreach (var k in _currentPressed)
+        {
+            if (k != 0x11 && k != 0x10 && k != 0x12 && k != 0x5B && k != 0x5C &&
+                k != 0xA0 && k != 0xA1 && k != 0xA2 && k != 0xA3 && k != 0xA4 && k != 0xA5)
+            {
+                Hotkeys.Add(k);
+            }
+        }
+
+        KeysString = string.Join(",", Hotkeys);
+
+        if (IsHandleCreated)
+            InnerTextBox.BeginInvoke(new Action(() => {
+                RenderText();
+                HotkeyChanged?.Invoke(this, EventArgs.Empty);
+            }));
+    }
+
+    public void LoadFromString(string val)
+    {
+        KeysString = val;
+        Hotkeys.Clear();
+        if (!string.IsNullOrEmpty(val))
+        {
+            foreach (var s in val.Split(','))
+            {
+                if (byte.TryParse(s, out byte b)) Hotkeys.Add(b);
+            }
+        }
+        RenderText();
+    }
+
+    private void RenderText()
+    {
+        if (_isListening && Hotkeys.Count == 0)
+        {
+            InnerTextBox.Text = "Listening (Press keys)...";
+            return;
+        }
+
+        if (Hotkeys.Count == 0) { InnerTextBox.Text = "None"; return; }
+
+        var names = new List<string>();
+        foreach (var k in Hotkeys)
+        {
+            if (k == 0x11) names.Add("Ctrl");
+            else if (k == 0x10) names.Add("Shift");
+            else if (k == 0x12) names.Add("Alt");
+            else if (k == 0x5B) names.Add("Win");
+            else if (k == 0xAD) names.Add("Mute");
+            else if (k == 0xAE) names.Add("Vol Down");
+            else if (k == 0xAF) names.Add("Vol Up");
+            else if (k == 0xB0) names.Add("Next Track");
+            else if (k == 0xB1) names.Add("Prev Track");
+            else if (k == 0xB2) names.Add("Stop");
+            else if (k == 0xB3) names.Add("Play/Pause");
+            else names.Add(((Keys)k).ToString());
+        }
+
+        InnerTextBox.Text = string.Join(" + ", names);
+    }
+
+    public void UpdateTheme()
+    {
+        BackColor = Theme.SurfaceColor;
+        InnerTextBox.BackColor = Theme.SurfaceColor;
+        InnerTextBox.ForeColor = Theme.TextColor;
+        Invalidate();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        e.Graphics.Clear(Theme.BackColor);
+        var rect = new Rectangle(0, 0, Width - 1, Height - 1);
+
+        using var b = new SolidBrush(Theme.SurfaceColor);
+        e.Graphics.FillPath(b, Gfx.GetRoundedPath(rect, Theme.Radius));
+
+        Color bColor = _isListening ? Theme.AccentColor : Theme.BorderColor;
+        float bWidth = _isListening ? 2f : 1f;
+
+        if (_isListening) rect = new Rectangle(1, 1, Width - 3, Height - 3);
+
+        using var p = new Pen(bColor, bWidth);
+        e.Graphics.DrawPath(p, Gfx.GetRoundedPath(rect, Theme.Radius));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        RemoveHook();
+        base.Dispose(disposing);
+    }
+}
+
 // --- MAIN FORM ---
 
 public class MainForm : Form
@@ -463,13 +729,16 @@ public class MainForm : Form
     private DateTime _lastTriggerTime = DateTime.MinValue;
     private DateTime? _cornerEntryTime = null;
 
-    private ModernComboBox? _cbTopLeft, _cbTopRight, _cbBottomLeft, _cbBottomRight;
+    private ModernComboBox? _cbTopLeft, _cbTopRight, _cbBottomLeft, _cbBottomRight, _cbCornerSelect;
     private ModernNumericUpDown? _numSensitivity, _numCooldown, _numTriggerDelay;
     private RoundedTextBox? _txtCustomPath;
+    private HotkeyInputBox? _customHotkeyBox;
     private ModernCheckBox? _chkStartup;
     private Panel? _headerPanel;
     private bool _allowVisible = true;
     private bool _isTriggered = false;
+
+    private int _currentEditingCorner = 0;
 
     private readonly string[] _actions = {
         "None",
@@ -483,7 +752,8 @@ public class MainForm : Form
         "Minimize All Windows",
         "Start Menu",
         "Start Screen Saver",
-        "Task Manager"
+        "Task Manager",
+        "Custom Hotkey"
     };
 
     public MainForm(bool startHidden)
@@ -494,7 +764,7 @@ public class MainForm : Form
         Theme.ApplySystemTheme();
 
         Text = "Windows Hot Corners";
-        Size = new Size(420, 680);
+        Size = new Size(420, 755);
         FormBorderStyle = FormBorderStyle.FixedSingle;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -507,6 +777,8 @@ public class MainForm : Form
         InitializeUI();
         LoadConfig();
         InitializeTray();
+
+        SwitchEditingCorner(0);
 
         SystemEvents.UserPreferenceChanged += OnUserPreferenceChanged;
 
@@ -535,6 +807,7 @@ public class MainForm : Form
 
         RefreshControls(this);
         _txtCustomPath?.UpdateTheme();
+        _customHotkeyBox?.UpdateTheme();
         _headerPanel?.Invalidate();
     }
 
@@ -584,13 +857,23 @@ public class MainForm : Form
         int colLeft = 25;
         int colRight = 215;
 
-        CreateLabel("Top Left", colLeft, y); _cbTopLeft = CreateCombo(colLeft, y + labelH);
-        CreateLabel("Top Right", colRight, y); _cbTopRight = CreateCombo(colRight, y + labelH);
+        CreateLabel("Top Left", colLeft, y);
+        _cbTopLeft = CreateCombo(colLeft, y + labelH);
+        _cbTopLeft.SelectedIndexChanged += (s, e) => _config.TopLeft = _cbTopLeft.SelectedIndex;
+
+        CreateLabel("Top Right", colRight, y);
+        _cbTopRight = CreateCombo(colRight, y + labelH);
+        _cbTopRight.SelectedIndexChanged += (s, e) => _config.TopRight = _cbTopRight.SelectedIndex;
 
         y += gap;
 
-        CreateLabel("Bottom Left", colLeft, y); _cbBottomLeft = CreateCombo(colLeft, y + labelH);
-        CreateLabel("Bottom Right", colRight, y); _cbBottomRight = CreateCombo(colRight, y + labelH);
+        CreateLabel("Bottom Left", colLeft, y);
+        _cbBottomLeft = CreateCombo(colLeft, y + labelH);
+        _cbBottomLeft.SelectedIndexChanged += (s, e) => _config.BottomLeft = _cbBottomLeft.SelectedIndex;
+
+        CreateLabel("Bottom Right", colRight, y);
+        _cbBottomRight = CreateCombo(colRight, y + labelH);
+        _cbBottomRight.SelectedIndexChanged += (s, e) => _config.BottomRight = _cbBottomRight.SelectedIndex;
 
         y += gap + 10;
 
@@ -600,24 +883,55 @@ public class MainForm : Form
 
         CreateLabel("Sensitivity (px)", x1, y);
         _numSensitivity = CreateNumeric(x1, y + labelH, 1, 100);
+        _numSensitivity.ValueChanged += (s, e) => _config.Sensitivity = _numSensitivity.Value;
 
         CreateLabel("Cooldown (ms)", x2, y);
         _numCooldown = CreateNumeric(x2, y + labelH, 100, 5000);
+        _numCooldown.ValueChanged += (s, e) => _config.Cooldown = _numCooldown.Value;
 
         CreateLabel("Trigger Delay (ms)", x3, y);
         _numTriggerDelay = CreateNumeric(x3, y + labelH, 0, 2000);
+        _numTriggerDelay.ValueChanged += (s, e) => _config.TriggerDelay = _numTriggerDelay.Value;
+
+        y += gap;
+
+        CreateLabel("Editing Custom App/Hotkey Settings For:", colLeft, y);
+        _cbCornerSelect = new ModernComboBox { Location = new Point(colLeft, y + labelH), Width = 360 };
+        _cbCornerSelect.Items.AddRange(new[] { "Top Left", "Top Right", "Bottom Left", "Bottom Right" });
+        _cbCornerSelect.SelectedIndex = 0;
+        _cbCornerSelect.SelectedIndexChanged += (s, e) => SwitchEditingCorner(_cbCornerSelect.SelectedIndex);
+        Controls.Add(_cbCornerSelect);
 
         y += gap;
 
         CreateLabel("Custom App Path", colLeft, y);
         _txtCustomPath = new RoundedTextBox { Location = new Point(colLeft, y + labelH), Size = new Size(310, 36) };
+        _txtCustomPath.InnerTextBox.TextChanged += (s, e) => {
+            _config.CustomAppPaths[_currentEditingCorner] = _txtCustomPath.InnerTextBox.Text;
+        };
         Controls.Add(_txtCustomPath);
 
         var btnBrowse = new ModernButton { Text = "...", Location = new Point(345, y + labelH), Size = new Size(40, 36) };
         btnBrowse.Click += BrowseFile;
         Controls.Add(btnBrowse);
 
-        y += 70;
+        y += 65;
+
+        CreateLabel("Custom Hotkey", colLeft, y);
+        _customHotkeyBox = new HotkeyInputBox { Location = new Point(colLeft, y + labelH) };
+        _customHotkeyBox.HotkeyChanged += (s, e) => {
+            _config.CustomHotkeys[_currentEditingCorner] = _customHotkeyBox.KeysString;
+        };
+        Controls.Add(_customHotkeyBox);
+
+        var btnStopListen = new ModernButton { Text = "OK", Location = new Point(345, y + labelH), Size = new Size(40, 36), IsPrimary = true };
+        btnStopListen.Click += (s, e) => {
+            _customHotkeyBox.StopListening();
+            this.Focus();
+        };
+        Controls.Add(btnStopListen);
+
+        y += 65;
 
         _chkStartup = new ModernCheckBox { Text = "Run at Windows Startup", Location = new Point(colLeft, y) };
         Controls.Add(_chkStartup);
@@ -625,6 +939,17 @@ public class MainForm : Form
         var btnSave = new ModernButton { Text = "Save & Minimize", Location = new Point(colLeft, y + 40), Size = new Size(360, 45), IsPrimary = true };
         btnSave.Click += SaveAndHide;
         Controls.Add(btnSave);
+    }
+
+    private void SwitchEditingCorner(int index)
+    {
+        _currentEditingCorner = index;
+
+        if (_txtCustomPath != null && _config.CustomAppPaths != null)
+            _txtCustomPath.InnerTextBox.Text = _config.CustomAppPaths[index];
+
+        if (_customHotkeyBox != null && _config.CustomHotkeys != null)
+            _customHotkeyBox.LoadFromString(_config.CustomHotkeys[index]);
     }
 
     private void HeaderPanel_Paint(object? sender, PaintEventArgs e)
@@ -695,20 +1020,18 @@ public class MainForm : Form
     private void SaveAndHide(object? sender, EventArgs e)
     {
         if (!Directory.Exists(_appDataFolder)) Directory.CreateDirectory(_appDataFolder);
-        string json = $$"""
-        {
-            "TopLeft": {{_cbTopLeft?.SelectedIndex ?? 0}},
-            "TopRight": {{_cbTopRight?.SelectedIndex ?? 0}},
-            "BottomLeft": {{_cbBottomLeft?.SelectedIndex ?? 0}},
-            "BottomRight": {{_cbBottomRight?.SelectedIndex ?? 0}},
-            "RunAtStartup": {{(_chkStartup?.Checked ?? false).ToString().ToLower()}},
-            "Sensitivity": {{_numSensitivity?.Value ?? 10}},
-            "Cooldown": {{_numCooldown?.Value ?? 500}},
-            "TriggerDelay": {{_numTriggerDelay?.Value ?? 0}},
-            "CustomAppPath": "{{_txtCustomPath?.InnerTextBox.Text.Replace("\\", "\\\\") ?? ""}}"
-        }
-        """;
+
+        _config.TopLeft = _cbTopLeft?.SelectedIndex ?? 0;
+        _config.TopRight = _cbTopRight?.SelectedIndex ?? 0;
+        _config.BottomLeft = _cbBottomLeft?.SelectedIndex ?? 0;
+        _config.BottomRight = _cbBottomRight?.SelectedIndex ?? 0;
+        _config.RunAtStartup = _chkStartup?.Checked ?? false;
+        _config.Sensitivity = _numSensitivity?.Value ?? 10;
+        _config.Cooldown = _numCooldown?.Value ?? 500;
+        _config.TriggerDelay = _numTriggerDelay?.Value ?? 0;
+
         try {
+            string json = JsonSerializer.Serialize(_config, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_configPath, json);
             SetStartup(_chkStartup?.Checked ?? false);
             Hide();
@@ -731,7 +1054,7 @@ public class MainForm : Form
         var primaryScreen = Screen.PrimaryScreen;
         if (primaryScreen is null) return;
 
-        if ((DateTime.Now - _lastTriggerTime).TotalMilliseconds < (_numCooldown?.Value ?? 500)) return;
+        if ((DateTime.Now - _lastTriggerTime).TotalMilliseconds < (_config.Cooldown)) return;
 
         if (GetAsyncKeyState(0x01) < 0 || GetAsyncKeyState(0x02) < 0)
         {
@@ -747,12 +1070,13 @@ public class MainForm : Form
 
         Point cursor = Cursor.Position;
         Rectangle screen = primaryScreen.Bounds;
-        int s = _numSensitivity?.Value ?? 10;
+        int s = _config.Sensitivity;
 
-        bool tl = (cursor.X < s && cursor.Y < s);
-        bool tr = (cursor.X > screen.Width - s && cursor.Y < s);
-        bool bl = (cursor.X < s && cursor.Y > screen.Height - s);
-        bool br = (cursor.X > screen.Width - s && cursor.Y > screen.Height - s);
+        // Accurate math using >= for correct pixel mapping
+        bool tl = (cursor.X < screen.Left + s && cursor.Y < screen.Top + s);
+        bool tr = (cursor.X >= screen.Right - s && cursor.Y < screen.Top + s);
+        bool bl = (cursor.X < screen.Left + s && cursor.Y >= screen.Bottom - s);
+        bool br = (cursor.X >= screen.Right - s && cursor.Y >= screen.Bottom - s);
 
         if (tl || tr || bl || br)
         {
@@ -763,17 +1087,16 @@ public class MainForm : Form
                 _cornerEntryTime = DateTime.Now;
             }
 
-            int delay = _numTriggerDelay?.Value ?? 0;
-            if ((DateTime.Now - _cornerEntryTime.Value).TotalMilliseconds >= delay)
+            if ((DateTime.Now - _cornerEntryTime.Value).TotalMilliseconds >= _config.TriggerDelay)
             {
                 _isTriggered = true;
                 _lastTriggerTime = DateTime.Now;
                 _cornerEntryTime = null;
 
-                if (tl) ExecuteAction(_cbTopLeft?.SelectedIndex ?? 0);
-                else if (tr) ExecuteAction(_cbTopRight?.SelectedIndex ?? 0);
-                else if (bl) ExecuteAction(_cbBottomLeft?.SelectedIndex ?? 0);
-                else if (br) ExecuteAction(_cbBottomRight?.SelectedIndex ?? 0);
+                if (tl) ExecuteAction(_config.TopLeft, 0);
+                else if (tr) ExecuteAction(_config.TopRight, 1);
+                else if (bl) ExecuteAction(_config.BottomLeft, 2);
+                else if (br) ExecuteAction(_config.BottomRight, 3);
             }
         }
         else
@@ -820,13 +1143,18 @@ public class MainForm : Form
     private const int GWL_STYLE = -16;
     private const uint WS_CAPTION = 0x00C00000;
 
-    private void ExecuteAction(int idx)
+    private void ExecuteAction(int actionIdx, int cornerIdx)
     {
-        switch (idx)
+        switch (actionIdx)
         {
             case 1: SendKeysTriple(0x11, 0x10, 0x09); break; // Ctrl+Shift+Tab
             case 2: SendKeys(0x5B, 0x09); break; // Win+Tab
-            case 3: try { Process.Start(new ProcessStartInfo(_txtCustomPath?.InnerTextBox.Text ?? "") { UseShellExecute = true }); } catch { } break;
+            case 3:
+                string appPath = _config.CustomAppPaths[cornerIdx];
+                if (!string.IsNullOrWhiteSpace(appPath)) {
+                    try { Process.Start(new ProcessStartInfo(appPath) { UseShellExecute = true }); } catch { }
+                }
+                break;
             case 4: SendKeys(0x5B, 0x44); break; // Win+D
             case 5: LockWorkStation(); break;
             case 6: SendKeys(0x5B, 0x41); break; // Win+A
@@ -835,6 +1163,28 @@ public class MainForm : Form
             case 9: SendSingleKey(0x5B); break; // Win
             case 10: SendMessage(GetDesktopWindow(), WM_SYSCOMMAND, SC_SCREENSAVE, 0); break;
             case 11: SendKeysTriple(0x11, 0x10, 0x1B); break; // Ctrl+Shift+Esc
+            case 12:
+                string hotkeyStr = _config.CustomHotkeys[cornerIdx];
+                if (!string.IsNullOrEmpty(hotkeyStr))
+                {
+                    List<byte> keysToPress = new List<byte>();
+                    foreach (var s in hotkeyStr.Split(',')) {
+                        if (byte.TryParse(s, out byte b)) keysToPress.Add(b);
+                    }
+
+                    if (keysToPress.Count > 0) {
+                        foreach (var k in keysToPress) {
+                            uint ext = (k >= 0x21 && k <= 0x2F) || (k >= 0xA6 && k <= 0xB7) ? 1u : 0u;
+                            keybd_event(k, 0, ext, 0);
+                        }
+                        for (int i = keysToPress.Count - 1; i >= 0; i--) {
+                            byte k = keysToPress[i];
+                            uint ext = (k >= 0x21 && k <= 0x2F) || (k >= 0xA6 && k <= 0xB7) ? 1u : 0u;
+                            keybd_event(k, 0, ext | 2u, 0);
+                        }
+                    }
+                }
+                break;
         }
     }
 
@@ -849,34 +1199,23 @@ public class MainForm : Form
             try
             {
                 string content = File.ReadAllText(_configPath);
-                if (_cbTopLeft != null) _cbTopLeft.SelectedIndex = GetVal(content, "TopLeft");
-                if (_cbTopRight != null) _cbTopRight.SelectedIndex = GetVal(content, "TopRight");
-                if (_cbBottomLeft != null) _cbBottomLeft.SelectedIndex = GetVal(content, "BottomLeft");
-                if (_cbBottomRight != null) _cbBottomRight.SelectedIndex = GetVal(content, "BottomRight");
-                if (_chkStartup != null) _chkStartup.Checked = content.Contains("\"RunAtStartup\": true");
-                if (_numSensitivity != null) _numSensitivity.Value = GetVal(content, "Sensitivity");
-                if (_numCooldown != null) _numCooldown.Value = GetVal(content, "Cooldown");
-                if (_numTriggerDelay != null) _numTriggerDelay.Value = GetVal(content, "TriggerDelay");
+                var cfg = JsonSerializer.Deserialize<Config>(content);
+                if (cfg != null)
+                {
+                    _config = cfg;
 
-                int start = content.IndexOf("CustomAppPath") + 16;
-                int end = content.LastIndexOf("\"");
-                if (start > 15 && end > start && _txtCustomPath != null)
-                    _txtCustomPath.InnerTextBox.Text = content.Substring(start, end - start).Replace("\\\\", "\\").Trim('"');
+                    if (_cbTopLeft != null) _cbTopLeft.SelectedIndex = _config.TopLeft;
+                    if (_cbTopRight != null) _cbTopRight.SelectedIndex = _config.TopRight;
+                    if (_cbBottomLeft != null) _cbBottomLeft.SelectedIndex = _config.BottomLeft;
+                    if (_cbBottomRight != null) _cbBottomRight.SelectedIndex = _config.BottomRight;
+                    if (_chkStartup != null) _chkStartup.Checked = _config.RunAtStartup;
+                    if (_numSensitivity != null) _numSensitivity.Value = _config.Sensitivity;
+                    if (_numCooldown != null) _numCooldown.Value = _config.Cooldown;
+                    if (_numTriggerDelay != null) _numTriggerDelay.Value = _config.TriggerDelay;
+                }
             }
             catch { }
         }
-    }
-
-    private int GetVal(string json, string key)
-    {
-        try
-        {
-            int start = json.IndexOf(key) + key.Length + 2;
-            int end = json.IndexOf(",", start);
-            if (end == -1) end = json.IndexOf("}", start);
-            return int.Parse(json.Substring(start, end - start).Trim());
-        }
-        catch { return 0; }
     }
 
     private void SetStartup(bool enable)
