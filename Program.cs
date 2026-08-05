@@ -181,8 +181,20 @@ public class ModernNumericUpDown : Control
 
             _txtInput.Leave += (s, e) => _txtInput.Text = _value.ToString();
 
+            // Bind mouse scroll events
+            this.MouseWheel += OnScroll;
+            _txtInput.MouseWheel += OnScroll;
+
             Controls.Add(_txtInput);
             UpdateTheme();
+    }
+
+    private void OnScroll(object? sender, MouseEventArgs e)
+    {
+        if (e.Delta > 0) Value++;
+        else if (e.Delta < 0) Value--;
+
+        if (e is HandledMouseEventArgs he) he.Handled = true;
     }
 
     public void UpdateTheme()
