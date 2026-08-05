@@ -7,7 +7,7 @@ A lightweight, native C# application that brings the productivity of macOS/Linux
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4.svg)
-![Runtime](https://img.shields.io/badge/.NET-6.0%2B-512BD4.svg)
+![Runtime](https://img.shields.io/badge/.NET-10.0%2B-512BD4.svg)
 ![Downloads](https://img.shields.io/github/downloads/osmanonurkoc/HotCorners/total)
 ![Release](https://img.shields.io/github/v/release/osmanonurkoc/HotCorners)
 
@@ -25,20 +25,19 @@ This tool runs quietly in the system tray and monitors your mouse cursor positio
 
 * **🎨 Theme-Aware UI:** The settings window automatically detects and switches between Dark and Light modes based on your Windows personalization settings.
 * **⚡ Zero Latency:** Built with native Win32 APIs (`User32.dll`, `Dwmapi.dll`) for instant trigger response.
-* **🚀 Custom Actions:**
-  * **Task View (Win+Tab):** Overview of all open windows.
-  * **Show Desktop:** Instantly hide all windows.
-  * **Action Center:** Open notifications and quick settings.
-  * **Lock Screen:** Secure your PC immediately.
+* **🎯 Corner-Specific Configurations:** Set up completely independent custom apps or hotkeys for each of the four screen corners.
+* **🚀 Extensive Action Library:**
+  * **Window Management:** Task View (Win+Tab), Show Desktop, Minimize All Windows.
+  * **System Actions:** Lock Screen, Action Center, File Explorer, Task Manager, Start Menu, Start Screen Saver.
   * **Custom App Launcher:** Run any `.exe`, script, or command.
-* **⚙️ Fine-Tuning:** Adjustable corner sensitivity (pixels) and cooldown timer (ms) to prevent accidental triggers.
+  * **Custom Hotkey Recorder:** Bind complex keyboard shortcuts or media keys (Play/Pause, Volume Control) natively using the built-in low-level keyboard hook.
+* **⚙️ Fine-Tuning:** Adjustable corner sensitivity (pixels), trigger delay (ms), and cooldown timer (ms) to prevent accidental triggers.
 * **👻 Unobtrusive:** Minimizes to the System Tray and uses negligible system resources (< 10MB RAM).
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 * **OS:** Windows 10 or Windows 11.
-* **Runtime:** [.NET Desktop Runtime 6.0](https://dotnet.microsoft.com/en-us/download/dotnet/6.0) or higher.
 
 ### Installation
 
@@ -53,12 +52,13 @@ This tool runs quietly in the system tray and monitors your mouse cursor positio
 The project is designed as a **Single-File Application** for easy portability.
 
 **Build Requirements:**
-* .NET SDK 6.0 or newer.
+* .NET SDK 10.0 or newer.
 
 **Build Command:**
 Use the provided `build_script.bat` or run:
 ```bash
 dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+
 ```
 
 ## ⚙️ Configuration
@@ -73,7 +73,7 @@ Configuration is stored in `%LocalAppData%\HotCornersApp\config.json`.
     
 -   `Native Task View` (Win+Tab)
     
--   `Launch Custom App`
+-   `Launch Custom App` (Independent per corner)
     
 -   `Show Desktop` (Win+D)
     
@@ -83,10 +83,20 @@ Configuration is stored in `%LocalAppData%\HotCornersApp\config.json`.
     
 -   `File Explorer` (Win+E)
     
+-   `Minimize All Windows` (Win+M)
+    
+-   `Start Menu` (Win)
+    
+-   `Start Screen Saver`
+    
+-   `Task Manager` (Ctrl+Shift+Esc)
+    
+-   `Custom Hotkey` (Independent per corner, supports modifiers & media keys)
+    
 
 ## ⚠️ Disclaimer
 
-This tool simulates keyboard input (`keybd_event`). Ensure you do not have conflicting hotkey software running.
+This tool uses low-level keyboard hooks (`WH_KEYBOARD_LL`) for recording custom hotkeys and simulates keyboard input (`keybd_event`) to trigger actions. Ensure you do not have conflicting hotkey software running that might intercept these events.
 
 ## 📄 License
 
