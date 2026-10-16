@@ -737,6 +737,7 @@ public class MainForm : Form
     private Panel? _headerPanel;
     private bool _allowVisible = true;
     private bool _isTriggered = false;
+    private readonly bool[] _cornerToggled = new bool[4];
 
     private int _currentEditingCorner = 0;
 
@@ -1108,10 +1109,29 @@ public class MainForm : Form
 
     private bool IsForegroundWindowFullScreen()
     {
+        if (_cornerToggled[0] || _cornerToggled[1] || _cornerToggled[2] || _cornerToggled[3])
+            return false;
+
         IntPtr hwnd = GetForegroundWindow();
         if (hwnd == IntPtr.Zero) return false;
 
         if (hwnd == GetDesktopWindow() || hwnd == GetShellWindow()) return false;
+
+        var classNameBuilder = new System.Text.StringBuilder(256);
+        GetClassName(hwnd, classNameBuilder, classNameBuilder.Capacity);
+        string className = classNameBuilder.ToString();
+
+        if (className is "XamlExplorerHostIslandWindow"
+            or "MultitaskingViewFrame"
+            or "Windows.UI.Core.CoreWindow"
+            or "WorkerW"
+            or "Progman"
+            or "Shell_TrayWnd"
+            or "Shell_SecondaryTrayWnd"
+            or "ForegroundStaging")
+        {
+            return false;
+        }
 
         GetWindowRect(hwnd, out Rectangle rect);
 
@@ -1133,6 +1153,7 @@ public class MainForm : Form
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     [DllImport("user32.dll")] private static extern IntPtr GetDesktopWindow();
     [DllImport("user32.dll")] private static extern IntPtr GetShellWindow();
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)] private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder lpClassName, int nMaxCount);
     [DllImport("user32.dll")] private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, int wParam, int lParam);
     [DllImport("user32.dll")] static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, int dwExtraInfo);
     [DllImport("user32.dll")] public static extern bool LockWorkStation();
@@ -1145,24 +1166,56 @@ public class MainForm : Form
 
     private void ExecuteAction(int actionIdx, int cornerIdx)
     {
+        bool isAlreadyOpen = _cornerToggled[cornerIdx];
+
         switch (actionIdx)
         {
-            case 1: SendKeysTriple(0x11, 0x10, 0x09); break; // Ctrl+Shift+Tab
-            case 2: SendKeys(0x5B, 0x09); break; // Win+Tab
+            case 1:
+                SendKeysTriple(0x11, 0x10, 0x09); // Ctrl+Shift+Tab
+                _cornerToggled[cornerIdx] = !isAlreadyOpen;
+                break;
+            case 2:
+                SendKeys(0x5B, 0x09); // Win+Tab
+                _cornerToggled[cornerIdx] = !isAlreadyOpen;
+                break;
             case 3:
                 string appPath = _config.CustomAppPaths[cornerIdx];
                 if (!string.IsNullOrWhiteSpace(appPath)) {
                     try { Process.Start(new ProcessStartInfo(appPath) { UseShellExecute = true }); } catch { }
                 }
                 break;
-            case 4: SendKeys(0x5B, 0x44); break; // Win+D
-            case 5: LockWorkStation(); break;
-            case 6: SendKeys(0x5B, 0x41); break; // Win+A
-            case 7: SendKeys(0x5B, 0x45); break; // Win+E
-            case 8: SendKeys(0x5B, 0x4D); break; // Win+M
-            case 9: SendSingleKey(0x5B); break; // Win
-            case 10: SendMessage(GetDesktopWindow(), WM_SYSCOMMAND, SC_SCREENSAVE, 0); break;
-            case 11: SendKeysTriple(0x11, 0x10, 0x1B); break; // Ctrl+Shift+Esc
+            case 4:
+                SendKeys(0x5B, 0x44); // Win+D
+                _cornerToggled[cornerIdx] = !isAlreadyOpen;
+                break;
+            case 5:
+                _cornerToggled[cornerIdx] = false;
+                LockWorkStation();
+                break;
+            case 6:
+                SendKeys(0x5B, 0x41); // Win+A
+                _cornerToggled[cornerIdx] = !isAlreadyOpen;
+                break;
+            case 7:
+                SendKeys(0x5B, 0x45); // Win+E
+                break;
+            case 8:
+                if (!isAlreadyOpen)
+                    SendKeys(0x5B, 0x4D); // Win+M
+                    else
+                        SendKeysTriple(0x5B, 0x10, 0x4D);
+            _cornerToggled[cornerIdx] = !isAlreadyOpen;
+            break;
+            case 9:
+                SendSingleKey(0x5B); // Win
+                _cornerToggled[cornerIdx] = !isAlreadyOpen;
+                break;
+            case 10:
+                SendMessage(GetDesktopWindow(), WM_SYSCOMMAND, SC_SCREENSAVE, 0);
+                break;
+            case 11:
+                SendKeysTriple(0x11, 0x10, 0x1B); // Ctrl+Shift+Esc
+                break;
             case 12:
                 string hotkeyStr = _config.CustomHotkeys[cornerIdx];
                 if (!string.IsNullOrEmpty(hotkeyStr))
@@ -1182,6 +1235,7 @@ public class MainForm : Form
                             uint ext = (k >= 0x21 && k <= 0x2F) || (k >= 0xA6 && k <= 0xB7) ? 1u : 0u;
                             keybd_event(k, 0, ext | 2u, 0);
                         }
+                        _cornerToggled[cornerIdx] = !isAlreadyOpen;
                     }
                 }
                 break;
