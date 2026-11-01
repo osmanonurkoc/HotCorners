@@ -21,6 +21,7 @@ using System.ComponentModel;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.IO;
+using System;
 
 namespace HotCornersApp;
 
@@ -1148,6 +1149,11 @@ public class MainForm : Form
 
     // --- Win32 Imports ---
 
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern bool EnumWindows(EnumWindowsProc enumProc, IntPtr lParam);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("user32.dll", SetLastError = true)] private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr hWnd, out Rectangle lpRect);
     [DllImport("user32.dll")] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
@@ -1164,6 +1170,28 @@ public class MainForm : Form
     private const int GWL_STYLE = -16;
     private const uint WS_CAPTION = 0x00C00000;
 
+    private void TriggerVirtualSpace()
+    {
+        var procs = Process.GetProcessesByName("VirtualSpace");
+        foreach (var p in procs)
+        {
+            if (p.MainWindowHandle != IntPtr.Zero)
+            {
+                PostMessage(p.MainWindowHandle, 0x0405, IntPtr.Zero, IntPtr.Zero);
+            }
+
+            EnumWindows((hWnd, lParam) =>
+            {
+                GetWindowThreadProcessId(hWnd, out uint pid);
+                if (pid == (uint)p.Id)
+                {
+                    PostMessage(hWnd, 0x0405, IntPtr.Zero, IntPtr.Zero);
+                }
+                return true;
+            }, IntPtr.Zero);
+        }
+    }
+
     private void ExecuteAction(int actionIdx, int cornerIdx)
     {
         bool isAlreadyOpen = _cornerToggled[cornerIdx];
@@ -1171,7 +1199,7 @@ public class MainForm : Form
         switch (actionIdx)
         {
             case 1:
-                SendKeysTriple(0x11, 0x10, 0x09); // Ctrl+Shift+Tab
+                TriggerVirtualSpace(); // Ctrl+Shift+Tab
                 _cornerToggled[cornerIdx] = !isAlreadyOpen;
                 break;
             case 2:
